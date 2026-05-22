@@ -32,6 +32,8 @@ task clean        # 成果物を削除
 - 必須フラグ:
   ```
   -sASYNCIFY
+  -sEXPORT_ES6=1
+  -sMODULARIZE=1
   -sEXPORTED_RUNTIME_METHODS=callMain
   -Os
   --closure 1
@@ -56,6 +58,8 @@ task clean        # 成果物を削除
 - **TypeScript** — `strict: true`、`any` は禁止（`unknown` を使う）
 - **Tailwind CSS** — スタイルはユーティリティクラスで書く。`<style>` ブロックは原則不使用。Tailwind で表現できない場合のみ `<style scoped>` を使う。
 - **Pinia** — 状態管理。コンポーネントをまたぐ状態はすべて store に置く。
+- **Vite ターゲット** — `target: 'esnext'`（モダンブラウザ最新2バージョンのみ）
+- **Vite base** — GitHub Pages 用にリポジトリ名を `base` に設定する（例: `base: '/webcalc/'`）
 
 ### ファイル・命名規則
 
@@ -91,10 +95,30 @@ src/
 - `defineProps` / `defineEmits` は型引数で書く（`withDefaults` 使用可）
 - テンプレート内ロジックは最小限。computed に切り出す。
 
+### タブ切り替え
+
+タブは `v-show` で実装する（`v-if` 禁止）。全タブを常時 DOM にマウントすることで  
+xterm.js のセッションが自然に維持され、`open()` の付け替えが不要になる。
+
+### WASMの遅延ロード
+
+WASM は各タブを**初めて表示したとき**に動的インポートする。  
+ロード中は `loadState: 'loading'` として `TerminalPane` がスピナーを表示する。
+
+```typescript
+// Emscripten (bc / apcalc)
+const { default: createModule } = await import('/wasm/bc.js')
+const Module = await createModule({ pty: slave })
+
+// wasm-pack (calc)
+const { default: init, Context } = await import('/wasm/calc.js')
+await init()
+const ctx = new Context()
+```
+
 ### xterm.js の使い方
 
-- `Terminal` インスタンスはコンポーネントの `onMounted` で生成し、`onUnmounted` で `dispose()` する
-- タブ切り替えでセッションを維持するため、インスタンスは Pinia store で保持し、`open()` の付け替えで DOM に再接続する
+- `Terminal` インスタンスは `onMounted` で生成し、`onUnmounted` で `dispose()` する
 - `FitAddon` は必ずロードし、ウィンドウリサイズ時に `fit()` を呼ぶ
 
 ```typescript
@@ -160,6 +184,21 @@ export const useTerminalStore = defineStore('terminal', () => {
   // actions は function
   return { ... }
 })
+```
+
+`useTerminalStore` が持つべき最低限の状態：
+
+```typescript
+type CalcName = 'calc' | 'bc' | 'apcalc'
+type LoadState = 'idle' | 'loading' | 'ready' | 'error'
+type ActiveTab = 'compare' | CalcName
+
+const activeTab = ref<ActiveTab>('compare')
+const loadState = ref<Record<CalcName, LoadState>>({
+  calc: 'idle', bc: 'idle', apcalc: 'idle',
+})
+const bridges = ref<Partial<Record<CalcName, WasmBridge>>>({})
+const errorMessage = ref<Partial<Record<CalcName, string>>>({})
 ```
 
 ---

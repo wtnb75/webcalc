@@ -5,9 +5,10 @@
 CLI計算機3種をWebAssemblyでビルドし、Vue + Viteの静的Webサイト上で  
 **xterm.js ターミナルエミュレータ + タブ切り替え** により操作・横比較できるようにする。
 
-- **配信形式:** 静的Webサイト（CDN/GitHub Pagesなど）
+- **配信形式:** GitHub Pages（静的配信）
 - **計算処理:** 全てクライアントサイド（WASM）
-- **スコープ外:** Octave（依存関係が大規模すぎる）
+- **ブラウザ対象:** モダンブラウザ最新2バージョン（Chrome / Firefox / Safari / Edge）
+- **スコープ外:** Octave（依存関係が大規模すぎる）、CI/CD（後回し）
 
 ---
 
@@ -106,8 +107,9 @@ project-webcalc/
 ```
 
 - 各ペインは独立したxterm.jsターミナル（直接タイプ可能）
-- ブロードキャストバーからは同じ入力を全端末に同時送信
+- ブロードキャストバーからは同じ入力を全端末に同時送信（**Enter キー** または **→送信ボタン**）
 - 各端末は独立してスクロール可能
+- 各ペインヘッダーに **[reset]** ボタン（そのセッションのみリセット）
 
 ### 個別タブ（全幅）
 
@@ -131,6 +133,7 @@ project-webcalc/
 
 - 計算機固有の機能（関数定義・変数・制御構文）を快適に操作
 - 比較タブの同じセッションと状態を共有（タブを行き来しても状態が保たれる）
+- ヘッダーに **[reset]** ボタン
 
 ---
 
@@ -149,7 +152,7 @@ xterm.js ←──────────────────────�
 
 ### bc / apcalc（Emscripten + xterm-pty）
 
-- Emscripten ビルドフラグ: `-sASYNCIFY -sEXPORTED_RUNTIME_METHODS=callMain`
+- Emscripten ビルドフラグ: `-sASYNCIFY -sEXPORT_ES6=1 -sMODULARIZE=1 -sEXPORTED_RUNTIME_METHODS=callMain`
 - readline / editline を無効化（`-DREADLINE=0` 等）し、fgets 入力に統一
 - `ASYNCIFY` により main ループが JS イベントループをブロックしない
 
@@ -158,6 +161,27 @@ xterm.js ←──────────────────────�
 - wasm-bindgen で `Context` を JS から操作できるように公開
 - プロンプト表示・エコー・履歴は JS 側で制御（rustyline は不使用）
 - `@` による履歴参照は Context が内部で保持するため動作する
+
+### WASMロードのタイミング
+
+**遅延ロード**：タブを初めて開いたときに `import()` を呼ぶ。  
+ロード中はターミナル領域にスピナーを表示し、完了後に xterm.js を起動する。
+
+### WASMエラー時のUI
+
+ロード失敗・クラッシュ時はターミナル領域内にエラー表示と Reload ボタンを出す。  
+他の計算機のタブは影響を受けない。
+
+```
+┌──────────────────────┐
+│ bc            [reset]│
+│                      │
+│  ❌ Failed to load   │
+│     bc.wasm          │
+│                      │
+│     [ Reload ]       │
+└──────────────────────┘
+```
 
 ### 共通インターフェース・実装パターン
 
@@ -185,7 +209,12 @@ CLAUDE.md「WASMブリッジ実装パターン」を参照。
 - **`TabBar.vue`** — タブUI、アクティブタブの切り替え
 - **`CompareView.vue`** — 3ペイン配置 + ブロードキャストバー
 - **`SingleView.vue`** — 全幅ターミナル（個別タブ）
-- **`TerminalPane.vue`** — xterm.js の mount/unmount、WasmBridge との接続
+- **`TerminalPane.vue`** — xterm.js の mount/unmount、WasmBridge との接続、エラー表示・Reloadボタン・Resetボタン
+
+### タブ切り替えの実装
+
+`v-show` で全タブを常時 DOM にマウントする。`v-if` は使わない。  
+xterm.js インスタンスの `open()` 付け替えが不要になり、セッションが自然に維持される。
 
 ---
 
@@ -217,6 +246,14 @@ tasks:
 | calc のエコー・プロンプト | JS側で完全制御（rustyline 非使用のためシンプル） |
 | WASMバイナリサイズ | `-Os` 最適化 + gzip/brotli 配信 |
 | xterm-pty と Emscripten の接続 | `openpty()` の slave を Module に渡す公式パターンで対応 |
+
+---
+
+## GitHub Pages デプロイ
+
+- Vite の `base` を `/リポジトリ名/` に設定する
+- `dist/` を `gh-pages` ブランチに push する（手動 or 後日 Actions 化）
+- WASM ファイルは `public/wasm/` に置くことで `base` パスが自動的に適用される
 
 ---
 
