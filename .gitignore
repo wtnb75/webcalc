@@ -1,0 +1,30 @@
+# WASM build artifacts
+web/public/wasm/
+
+# Frontend build output
+web/dist/
+web/node_modules/
+web/.vite/
+
+# Rust build artifacts
+wasm/calc/target/
+wasm/calc/pkg/
+
+# Coverage reports
+web/coverage/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Downloaded source archives and extracted directories
+# task download で再取得できるため git 管理しない
+*.tar.gz
+*.tar.bz2
+bc-1.08.2/
+calc-0.5.0/
+calc-2.17.0.0/
+octave-11.1.0/
