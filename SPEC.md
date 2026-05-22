@@ -69,6 +69,9 @@ project-webcalc/
 │       │   └── useBroadcast.ts    # 全端末への一括送信
 │       ├── types/
 │       │   └── wasm.ts            # WasmBridge 等の共有型定義
+│   ├── workers/                   # Web Worker スクリプト（importScripts用、Viteでバンドルしない）
+│   │   ├── bc.worker.js
+│   │   └── apcalc.worker.js
 │       └── components/
 │           ├── TabBar.vue         # タブ切り替えUI
 │           ├── TerminalPane.vue   # xterm.js ラッパー（1計算機分）
@@ -154,7 +157,8 @@ xterm.js ←──────────────────────�
 
 ### bc / apcalc（Emscripten + xterm-pty）
 
-- Emscripten ビルドフラグ: `-sASYNCIFY -sFORCE_FILESYSTEM -sEXPORT_ES6=1 -sMODULARIZE=1 -sEXPORTED_RUNTIME_METHODS=callMain --js-library=emscripten-pty.js`
+- Emscripten ビルドフラグ: `-sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -Os`
+- 出力は Web Worker 内で `importScripts` するため ESM 不要・ASYNCIFY 不要
 - readline / editline を無効化（`-DREADLINE=0` 等）し、fgets 入力に統一
 - `ASYNCIFY` により main ループが JS イベントループをブロックしない
 
@@ -199,9 +203,10 @@ CLAUDE.md「WASMブリッジ実装パターン」を参照。
 | Vue 3      | UIフレームワーク |
 | Vite       | ビルドツール |
 | Pinia      | 状態管理（端末状態・タブ） |
-| `@xterm/xterm`     | ターミナルエミュレータ |
-| `@xterm/addon-fit` | ターミナルのサイズ自動調整 |
-| `xterm-pty`        | Emscripten WASM ↔ xterm.js stdin/stdout ブリッジ |
+| `@xterm/xterm`      | ターミナルエミュレータ |
+| `@xterm/addon-fit`  | ターミナルのサイズ自動調整 |
+| `xterm-pty`         | PTYレイヤー（`openpty` / `TtyServer`）|
+| `coi-serviceworker` | GitHub Pages で SharedArrayBuffer を有効化（COOP/COEPヘッダー注入）|
 
 ---
 
@@ -259,6 +264,19 @@ tasks:
 - Vite の `base` を `/リポジトリ名/` に設定する
 - `dist/` を `gh-pages` ブランチに push する（手動 or 後日 Actions 化）
 - WASM ファイルは `public/wasm/` に置くことで `base` パスが自動的に適用される
+
+### SharedArrayBuffer の有効化（`coi-serviceworker`）
+
+xterm-pty は `SharedArrayBuffer` を使うため `Cross-Origin-Opener-Policy: same-origin` と  
+`Cross-Origin-Embedder-Policy: require-corp` ヘッダーが必要。  
+GitHub Pages はカスタムヘッダー不可なので `coi-serviceworker` で代替する。
+
+```html
+<!-- index.html の <head> 先頭に追加 -->
+<script src="/coi-serviceworker.js"></script>
+```
+
+`coi-serviceworker.js` は `public/` に配置（npm パッケージからコピー）。
 
 ---
 

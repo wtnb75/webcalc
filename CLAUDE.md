@@ -84,87 +84,77 @@ tasks:
 - イメージ: `emscripten/emsdk:latest`
 - 必須フラグ:
   ```
-  -sASYNCIFY
-  -sFORCE_FILESYSTEM
-  -sEXPORT_ES6=1
-  -sMODULARIZE=1
-  -sEXPORTED_RUNTIME_METHODS=callMain
-  --js-library=emscripten-pty.js
+  -sNO_EXIT_RUNTIME=1
+  -sFORCE_FILESYSTEM=1
   -Os
-  --closure 1
   ```
-- `emscripten-pty.js` は xterm-pty パッケージに同梱（`node_modules/xterm-pty/emscripten-pty.js`）
-- readline / editline は必ず無効化する（`-DHAVE_READLINE=0` 等、ソースにより異なる）
-- 出力先: `web/public/wasm/<name>.js` + `<name>.wasm`
+- ASYNCIFY は不要（Web Worker 内で Atomics.wait を使うため）
+- readline / editline は必ず無効化する（`--without-readline` 等、ソースにより異なる）
+- 出力先: `web/public/wasm/<name>-core.js` + `<name>-core.wasm`（Worker が importScripts で読む）
+
+### xterm-pty の Emscripten 統合アーキテクチャ
+
+xterm-pty v0.9.x は **Web Worker + SharedArrayBuffer** で Emscripten と通信する。  
+`emscripten-pty.js` は存在しない。ASYNCIFY も不要。
+
+```
+[メインスレッド]                    [Web Worker]
+ Terminal                           bc-core.js (Emscripten)
+   ↕ loadAddon(master)               ↕ emscriptenHack(new TtyClient(msg))
+ TtyServer(slave).start(worker) ←→ workerTools.js
+```
+
+**SharedArrayBuffer を使うため COOP/COEP ヘッダーが必要。**  
+GitHub Pages はカスタムヘッダー不可なので `coi-serviceworker` を使う。
 
 ### bc のビルド手順（autoconf/automake + Emscripten）
 
-bc は autoconf ベースなので `emconfigure` + `emmake` パターンを使う。  
-元ソースを汚さないよう `/tmp` にコピーしてビルドする。
+Emscripten でビルドするフラグは `-sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1` のみ。  
+出力ファイル名は `bc-core.js` とする（Worker の `importScripts` で読み込む）。
 
 `wasm/bc/Makefile` のひな型:
 
 ```makefile
-SRC     ?= /src/bc
-OUT     ?= /out
-PTY_JS  ?= /emscripten-pty.js
-BUILD   := /tmp/bc-build
+SRC   ?= /src/bc
+OUT   ?= /out
+BUILD := /tmp/bc-build
 
-EMCC_LDFLAGS := \
-    -sASYNCIFY \
-    -sFORCE_FILESYSTEM \
-    -sEXPORT_ES6=1 \
-    -sMODULARIZE=1 \
-    -sEXPORTED_RUNTIME_METHODS=callMain \
-    --js-library=$(PTY_JS) \
-    -Os
+EMCC_LDFLAGS := -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -Os
 
 .PHONY: all
 
-all: $(OUT)/bc.js
+all: $(OUT)/bc-core.js
 
-$(OUT)/bc.js:
+$(OUT)/bc-core.js:
 	mkdir -p $(BUILD) $(OUT)
 	cd $(BUILD) && \
 	    emconfigure $(SRC)/configure \
 	        --without-readline \
 	        --without-libedit && \
 	    emmake make EXEEXT=.js LDFLAGS="$(EMCC_LDFLAGS)"
-	cp $(BUILD)/bc/bc.js   $(OUT)/bc.js
-	cp $(BUILD)/bc/bc.wasm $(OUT)/bc.wasm
+	cp $(BUILD)/bc/bc.js   $(OUT)/bc-core.js
+	cp $(BUILD)/bc/bc.wasm $(OUT)/bc-core.wasm
 ```
 
 - `--without-readline --without-libedit` で対話ライブラリを両方無効化
-- `EXEEXT=.js` で emcc に JS+WASM ペアを出力させる
-- `LDFLAGS` に Emscripten フラグを渡す（automake が最終リンク時に使う）
+- 出力は Worker で `importScripts` するので ESM 形式不要
 
 ### apcalc のビルド手順（手書き Makefile + Emscripten）
-
-apcalc は手書き Makefile なので `emmake make` で変数を上書きする。  
-`USE_READLINE=` を空にすることで readline を無効化できる（`Makefile.config` 参照）。
 
 `wasm/apcalc/Makefile` のひな型:
 
 ```makefile
-SRC     ?= /src/apcalc
-OUT     ?= /out
-PTY_JS  ?= /emscripten-pty.js
-BUILD   := /tmp/apcalc-build
+SRC   ?= /src/apcalc
+OUT   ?= /out
+BUILD := /tmp/apcalc-build
 
-EMCC_LDFLAGS := \
-    -sASYNCIFY \
-    -sFORCE_FILESYSTEM \
-    -sEXPORT_ES6=1 \
-    -sMODULARIZE=1 \
-    -sEXPORTED_RUNTIME_METHODS=callMain \
-    --js-library=$(PTY_JS) \
-    -Os
+EMCC_LDFLAGS := -sNO_EXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -Os
 
 .PHONY: all
 
-all: $(OUT)/apcalc.js
+all: $(OUT)/apcalc-core.js
 
-$(OUT)/apcalc.js:
+$(OUT)/apcalc-core.js:
 	cp -r $(SRC)/. $(BUILD)
 	emmake make -C $(BUILD) \
 	    USE_READLINE= \
@@ -174,14 +164,34 @@ $(OUT)/apcalc.js:
 	    LDFLAGS="$(EMCC_LDFLAGS)" \
 	    EXEEXT=.js \
 	    calc
-	cp $(BUILD)/calc.js   $(OUT)/apcalc.js
-	cp $(BUILD)/calc.wasm $(OUT)/apcalc.wasm
+	cp $(BUILD)/calc.js   $(OUT)/apcalc-core.js
+	cp $(BUILD)/calc.wasm $(OUT)/apcalc-core.wasm
 ```
 
-- `USE_READLINE=` `READLINE_LIB=` `READLINE_EXTRAS=` `READLINE_INCLUDE=` の4変数を空にする
-- ソースを `/tmp` にコピーしてビルド（元ソースに中間ファイルを残さない）
-- **注意**: apcalc の Makefile は複雑（4400行）なため、`EXEEXT` が効かない場合は  
-  最終バイナリを `emcc` で再リンクする2段階ビルドに切り替える
+### Web Worker スクリプト（bc / apcalc 共通パターン）
+
+`web/public/workers/bc.worker.js` として配置:
+
+```js
+importScripts('/node_modules/xterm-pty/workerTools.js')
+
+onmessage = (msg) => {
+  importScripts(location.origin + '/wasm/bc-core.js')
+  emscriptenHack(new TtyClient(msg.data))
+}
+```
+
+### メインスレッドの接続パターン
+
+```typescript
+import { openpty } from 'xterm-pty'
+
+const { master, slave } = openpty()
+terminal.loadAddon(master)
+
+const worker = new Worker('/workers/bc.worker.js')
+new TtyServer(slave).start(worker)
+```
 
 ### wasm-pack（calc）
 
@@ -275,20 +285,23 @@ fitAddon.fit()
 
 ### xterm-pty の接続パターン（Emscripten用）
 
+Emscripten コードは **Web Worker** で動かす。メインスレッドとは `TtyServer` / `TtyClient` 経由で通信。
+
 ```typescript
-import { openpty } from 'xterm-pty'
+// メインスレッド（TerminalPane.vue 内）
+import { openpty, TtyServer } from 'xterm-pty'
 
 const { master, slave } = openpty()
-terminal.loadAddon(master)  // master 自体がアドオン（PtyAddon は不要）
+terminal.loadAddon(master)
 
-// Emscripten Module に slave を渡す
-const { default: createModule } = await import('/wasm/bc.js')
-await createModule({ pty: slave })
+const worker = new Worker('/workers/bc.worker.js')
+new TtyServer(slave).start(worker)
 ```
 
-- `openpty()` → `terminal.loadAddon(master)` → `createModule({ pty: slave })` の順を守る
+- `TtyServer` は `xterm-pty` からインポートする
+- Worker スクリプトは `web/public/workers/<name>.worker.js` に置く
 - bc と apcalc で同じパターンを使う
-- Emscripten ビルド時に `--js-library=emscripten-pty.js` と `-sFORCE_FILESYSTEM` が必要（下記ビルド規約参照）
+- **SharedArrayBuffer が必要**: `coi-serviceworker` をページに仕込むこと（下記参照）
 
 ### calc（Rust wasm-bindgen）のREPLパターン
 

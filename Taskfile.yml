@@ -7,7 +7,11 @@ vars:
   CORIOLINUS: https://github.com/coriolinus/calc/archive/refs/tags/v0.5.0.tar.gz
   BC: https://ftp.gnu.org/gnu/bc/bc-1.08.2.tar.gz
   OCTAVE: https://ftp.gnu.org/gnu/octave/octave-11.1.0.tar.gz
-  
+  UID:
+    sh: id -u
+  GID:
+    sh: id -g
+
 
 tasks:
   default:
@@ -29,6 +33,108 @@ tasks:
     cmds:
       - "[ -f {{ .FNAME }} ] || curl -sLO {{ .URL }}"
       - "[ -d {{ .BASE }} ] || tar xfz {{ .FNAME }}"
+
+  web:install:
+    desc: install npm dependencies (required before WASM builds)
+    dir: web
+    sources:
+      - package.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+      - npm install
+
+  build:bc:
+    desc: build bc WASM via Emscripten (Docker)
+    cmds:
+      - mkdir -p web/public/wasm
+      - |
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/bc-1.08.2:/src/bc:ro" \
+          -v "{{.ROOT_DIR}}/wasm/bc:/work" \
+          -v "{{.ROOT_DIR}}/web/public/wasm:/out" \
+          --user "{{.UID}}:{{.GID}}" \
+          -w /work \
+          emscripten/emsdk:latest \
+          make OUT=/out SRC=/src/bc
+
+  build:calc:
+    desc: build calc (Rust) WASM via wasm-pack (Docker)
+    cmds:
+      - mkdir -p web/public/wasm
+      - |
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/calc-0.5.0:/src/calc:ro" \
+          -v "{{.ROOT_DIR}}/wasm/calc:/work" \
+          -v "{{.ROOT_DIR}}/web/public/wasm:/out" \
+          rust:latest \
+          sh -c "
+            set -e
+            cp -r /src/calc /tmp/calc-src
+            printf 'fn main() { lalrpop::process_root().unwrap(); }\n' > /tmp/calc-src/build.rs
+            mkdir -p /tmp/ws/src
+            cp /work/src/lib.rs /tmp/ws/src/
+            sed 's|path = \"/src/calc\"|path = \"/tmp/calc-src\"|' /work/Cargo.toml > /tmp/ws/Cargo.toml
+            cargo install wasm-pack --root /tmp/wasm-pack-bin
+            cd /tmp/ws
+            /tmp/wasm-pack-bin/bin/wasm-pack build --target web --out-dir /tmp/pkg
+            cp /tmp/pkg/calc_wasm.js /out/calc.js
+            cp /tmp/pkg/calc_wasm_bg.wasm /out/calc.wasm
+            chown {{.UID}}:{{.GID}} /out/calc.js /out/calc.wasm
+          "
+
+  build:apcalc:
+    desc: build apcalc WASM via Emscripten (Docker)
+    cmds:
+      - mkdir -p web/public/wasm
+      - |
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/calc-2.17.0.0:/src/apcalc:ro" \
+          -v "{{.ROOT_DIR}}/wasm/apcalc:/work" \
+          -v "{{.ROOT_DIR}}/web/public/wasm:/out" \
+          --user "{{.UID}}:{{.GID}}" \
+          -w /work \
+          emscripten/emsdk:latest \
+          make OUT=/out SRC=/src/apcalc
+
+  build:wasm:
+    desc: build all WASM modules
+    cmds:
+      - task: build:bc
+      - task: build:calc
+      - task: build:apcalc
+
+  build:web:
+    desc: build frontend (npm run build → dist/)
+    dir: web
+    deps: [web:install]
+    cmds:
+      - npm run build
+
+  build:
+    desc: build everything (WASM + frontend)
+    cmds:
+      - task: build:wasm
+      - task: build:web
+
+  dev:
+    desc: start dev server (requires WASM pre-built)
+    dir: web
+    deps: [web:install]
+    cmds:
+      - npm run dev
+
+  test:
+    desc: run all tests
+    dir: web
+    deps: [web:install]
+    cmds:
+      - npm run test:coverage
+
+  clean:
+    desc: remove build artifacts
+    cmds:
+      - rm -rf web/public/wasm web/dist
 
   download:
     desc: download source
