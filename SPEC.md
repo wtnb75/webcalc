@@ -67,6 +67,8 @@ project-webcalc/
 │       ├── composables/
 │       │   ├── useWasmBridge.ts   # WASM↔xterm.js I/Oブリッジ
 │       │   └── useBroadcast.ts    # 全端末への一括送信
+│       ├── types/
+│       │   └── wasm.ts            # WasmBridge 等の共有型定義
 │       └── components/
 │           ├── TabBar.vue         # タブ切り替えUI
 │           ├── TerminalPane.vue   # xterm.js ラッパー（1計算機分）
@@ -152,7 +154,7 @@ xterm.js ←──────────────────────�
 
 ### bc / apcalc（Emscripten + xterm-pty）
 
-- Emscripten ビルドフラグ: `-sASYNCIFY -sEXPORT_ES6=1 -sMODULARIZE=1 -sEXPORTED_RUNTIME_METHODS=callMain`
+- Emscripten ビルドフラグ: `-sASYNCIFY -sFORCE_FILESYSTEM -sEXPORT_ES6=1 -sMODULARIZE=1 -sEXPORTED_RUNTIME_METHODS=callMain --js-library=emscripten-pty.js`
 - readline / editline を無効化（`-DREADLINE=0` 等）し、fgets 入力に統一
 - `ASYNCIFY` により main ループが JS イベントループをブロックしない
 
@@ -222,6 +224,7 @@ xterm.js インスタンスの `open()` 付け替えが不要になり、セッ�
 
 ```yaml
 tasks:
+  web:install:   # npm install（build:bc / build:apcalc / build:calc の前提）
   build:calc:    # Docker内でwasm-pack build → public/wasm/ へコピー
   build:bc:      # Docker内でEmscriptenビルド → public/wasm/ へコピー
   build:apcalc:  # Docker内でEmscriptenビルド → public/wasm/ へコピー
@@ -229,10 +232,12 @@ tasks:
   build:web:     # npm run build → dist/ 生成
   build:         # build:wasm + build:web
   dev:           # WASMビルド済み前提でnpm run dev（ホットリロード）
+  test:          # npm run test:coverage + cargo test
   clean:         # dist/ + public/wasm/ を削除
 ```
 
-全てDockerコンテナ経由で実行（ホスト環境依存なし）。
+全てDockerコンテナ経由で実行（ホスト環境依存なし）。  
+`build:bc` / `build:apcalc` / `build:calc` は `web:install` に依存（`emscripten-pty.js` の取得のため）。
 
 ---
 

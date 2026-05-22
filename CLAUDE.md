@@ -19,12 +19,65 @@
 タスクは `Taskfile.yml` で管理する。新しいビルドステップは必ずTaskfileにタスクとして追加する。
 
 ```
-task build:wasm   # WASMを全部ビルド
-task build:web    # フロントエンドをビルド
-task build        # 両方まとめて
-task dev          # 開発サーバー起動（WASM事前ビルド済み前提）
-task clean        # 成果物を削除
+task web:install   # npm install（WASMビルドの前提）
+task build:wasm    # WASMを全部ビルド（web:install に依存）
+task build:web     # フロントエンドをビルド
+task build         # 両方まとめて
+task dev           # 開発サーバー起動（WASM事前ビルド済み前提）
+task test          # テスト実行
+task clean         # 成果物を削除
 ```
+
+### Docker ビルドの共通規則
+
+**前提:** `emscripten-pty.js` は `web/node_modules/xterm-pty/emscripten-pty.js` にある。  
+`build:bc` / `build:apcalc` は必ず `web:install` タスクに依存させる。
+
+**ボリュームマウント規則:**
+
+| ホストパス | コンテナパス | 権限 |
+|---|---|---|
+| 元ソースディレクトリ | `/src/<name>` | `:ro` |
+| `wasm/<name>/` | `/work` | 読み書き |
+| `web/public/wasm/` | `/out` | 読み書き |
+| `web/node_modules/xterm-pty/emscripten-pty.js` | `/emscripten-pty.js` | `:ro` |
+
+**docker run の基本形（Taskfile 内）:**
+
+```yaml
+vars:
+  UID:
+    sh: id -u
+  GID:
+    sh: id -g
+
+tasks:
+  web:install:
+    dir: web
+    sources: [package.json]
+    generates: [node_modules/.package-lock.json]
+    cmds:
+      - npm install
+
+  build:bc:
+    deps: [web:install]
+    cmds:
+      - mkdir -p web/public/wasm
+      - |
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/bc-1.08.2:/src/bc:ro" \
+          -v "{{.ROOT_DIR}}/wasm/bc:/work" \
+          -v "{{.ROOT_DIR}}/web/public/wasm:/out" \
+          -v "{{.ROOT_DIR}}/web/node_modules/xterm-pty/emscripten-pty.js:/emscripten-pty.js:ro" \
+          --user "{{.UID}}:{{.GID}}" \
+          -w /work \
+          emscripten/emsdk:latest \
+          make OUT=/out SRC=/src/bc PTY_JS=/emscripten-pty.js
+```
+
+- `--user` で出力ファイルの所有者をホストユーザーに合わせる（root 所有ファイルを避ける）
+- `sources` / `generates` でファイル変更がない場合はスキップされる
+- apcalc も同じパターン（`SRC=/src/apcalc` に変えるだけ）
 
 ### Emscripten（bc / apcalc）
 
@@ -32,14 +85,103 @@ task clean        # 成果物を削除
 - 必須フラグ:
   ```
   -sASYNCIFY
+  -sFORCE_FILESYSTEM
   -sEXPORT_ES6=1
   -sMODULARIZE=1
   -sEXPORTED_RUNTIME_METHODS=callMain
+  --js-library=emscripten-pty.js
   -Os
   --closure 1
   ```
+- `emscripten-pty.js` は xterm-pty パッケージに同梱（`node_modules/xterm-pty/emscripten-pty.js`）
 - readline / editline は必ず無効化する（`-DHAVE_READLINE=0` 等、ソースにより異なる）
 - 出力先: `web/public/wasm/<name>.js` + `<name>.wasm`
+
+### bc のビルド手順（autoconf/automake + Emscripten）
+
+bc は autoconf ベースなので `emconfigure` + `emmake` パターンを使う。  
+元ソースを汚さないよう `/tmp` にコピーしてビルドする。
+
+`wasm/bc/Makefile` のひな型:
+
+```makefile
+SRC     ?= /src/bc
+OUT     ?= /out
+PTY_JS  ?= /emscripten-pty.js
+BUILD   := /tmp/bc-build
+
+EMCC_LDFLAGS := \
+    -sASYNCIFY \
+    -sFORCE_FILESYSTEM \
+    -sEXPORT_ES6=1 \
+    -sMODULARIZE=1 \
+    -sEXPORTED_RUNTIME_METHODS=callMain \
+    --js-library=$(PTY_JS) \
+    -Os
+
+.PHONY: all
+
+all: $(OUT)/bc.js
+
+$(OUT)/bc.js:
+	mkdir -p $(BUILD) $(OUT)
+	cd $(BUILD) && \
+	    emconfigure $(SRC)/configure \
+	        --without-readline \
+	        --without-libedit && \
+	    emmake make EXEEXT=.js LDFLAGS="$(EMCC_LDFLAGS)"
+	cp $(BUILD)/bc/bc.js   $(OUT)/bc.js
+	cp $(BUILD)/bc/bc.wasm $(OUT)/bc.wasm
+```
+
+- `--without-readline --without-libedit` で対話ライブラリを両方無効化
+- `EXEEXT=.js` で emcc に JS+WASM ペアを出力させる
+- `LDFLAGS` に Emscripten フラグを渡す（automake が最終リンク時に使う）
+
+### apcalc のビルド手順（手書き Makefile + Emscripten）
+
+apcalc は手書き Makefile なので `emmake make` で変数を上書きする。  
+`USE_READLINE=` を空にすることで readline を無効化できる（`Makefile.config` 参照）。
+
+`wasm/apcalc/Makefile` のひな型:
+
+```makefile
+SRC     ?= /src/apcalc
+OUT     ?= /out
+PTY_JS  ?= /emscripten-pty.js
+BUILD   := /tmp/apcalc-build
+
+EMCC_LDFLAGS := \
+    -sASYNCIFY \
+    -sFORCE_FILESYSTEM \
+    -sEXPORT_ES6=1 \
+    -sMODULARIZE=1 \
+    -sEXPORTED_RUNTIME_METHODS=callMain \
+    --js-library=$(PTY_JS) \
+    -Os
+
+.PHONY: all
+
+all: $(OUT)/apcalc.js
+
+$(OUT)/apcalc.js:
+	cp -r $(SRC)/. $(BUILD)
+	emmake make -C $(BUILD) \
+	    USE_READLINE= \
+	    READLINE_LIB= \
+	    READLINE_EXTRAS= \
+	    READLINE_INCLUDE= \
+	    LDFLAGS="$(EMCC_LDFLAGS)" \
+	    EXEEXT=.js \
+	    calc
+	cp $(BUILD)/calc.js   $(OUT)/apcalc.js
+	cp $(BUILD)/calc.wasm $(OUT)/apcalc.wasm
+```
+
+- `USE_READLINE=` `READLINE_LIB=` `READLINE_EXTRAS=` `READLINE_INCLUDE=` の4変数を空にする
+- ソースを `/tmp` にコピーしてビルド（元ソースに中間ファイルを残さない）
+- **注意**: apcalc の Makefile は複雑（4400行）なため、`EXEEXT` が効かない場合は  
+  最終バイナリを `emcc` で再リンクする2段階ビルドに切り替える
 
 ### wasm-pack（calc）
 
@@ -69,6 +211,7 @@ src/
   composables/     # use*.ts
   stores/          # use*Store.ts（Pinia）
   types/           # *.ts（型定義のみ）
+                   # WasmBridge 型は src/types/wasm.ts に置く
 ```
 
 - コンポーネント名は PascalCase（`TerminalPane.vue`）
@@ -134,17 +277,18 @@ fitAddon.fit()
 
 ```typescript
 import { openpty } from 'xterm-pty'
-import { PtyAddon } from '@xterm-pty/xterm-addon'  // パッケージ名は要確認
 
 const { master, slave } = openpty()
-terminal.loadAddon(new PtyAddon(master))
+terminal.loadAddon(master)  // master 自体がアドオン（PtyAddon は不要）
 
 // Emscripten Module に slave を渡す
-const Module = await loadModule({ pty: slave })
+const { default: createModule } = await import('/wasm/bc.js')
+await createModule({ pty: slave })
 ```
 
-- `openpty()` と `PtyAddon` の接続は毎回この形に揃える
-- bc と apcalc で同じパターンを使う（コピペ可）
+- `openpty()` → `terminal.loadAddon(master)` → `createModule({ pty: slave })` の順を守る
+- bc と apcalc で同じパターンを使う
+- Emscripten ビルド時に `--js-library=emscripten-pty.js` と `-sFORCE_FILESYSTEM` が必要（下記ビルド規約参照）
 
 ### calc（Rust wasm-bindgen）のREPLパターン
 
