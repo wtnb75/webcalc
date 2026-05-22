@@ -173,13 +173,23 @@ $(OUT)/apcalc-core.js:
 `web/public/workers/bc.worker.js` として配置:
 
 ```js
-importScripts('/node_modules/xterm-pty/workerTools.js')
+importScripts('../workerTools.js')
 
 onmessage = (msg) => {
-  importScripts(location.origin + '/wasm/bc-core.js')
+  // Emscripten uses self.location.href (the worker URL) as scriptDirectory,
+  // so it would look for bc.wasm in workers/ instead of wasm/.
+  // Module.locateFile overrides path resolution to point at the correct wasm file.
+  const wasmBase = new URL('../wasm/', self.location.href).href
+  self.Module = {
+    locateFile: (_path) => wasmBase + 'bc-core.wasm',
+  }
+  importScripts('../wasm/bc-core.js')
   emscriptenHack(new TtyClient(msg.data))
 }
 ```
+
+- `workerTools.js` と WASM ファイルへのパスは相対URLで指定する（base パスが変わっても動くため）
+- `Module.locateFile` を `importScripts` より先に設定しないと Emscripten が誤ったパスを使う
 
 ### メインスレッドの接続パターン
 

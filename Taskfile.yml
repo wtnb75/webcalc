@@ -78,9 +78,10 @@ tasks:
             cargo install wasm-pack --root /tmp/wasm-pack-bin
             cd /tmp/ws
             /tmp/wasm-pack-bin/bin/wasm-pack build --target web --out-dir /tmp/pkg
-            cp /tmp/pkg/calc_wasm.js /out/calc.js
-            cp /tmp/pkg/calc_wasm_bg.wasm /out/calc.wasm
-            chown {{.UID}}:{{.GID}} /out/calc.js /out/calc.wasm
+            cp /tmp/pkg/calc_wasm.js /out/calc_wasm.js
+            cp /tmp/pkg/calc_wasm_bg.wasm /out/calc_wasm_bg.wasm
+            cp /tmp/pkg/calc_wasm.d.ts /out/calc_wasm.d.ts
+            chown {{.UID}}:{{.GID}} /out/calc_wasm.js /out/calc_wasm_bg.wasm /out/calc_wasm.d.ts
           "
 
   build:apcalc:
