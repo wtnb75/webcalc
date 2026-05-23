@@ -3,9 +3,8 @@ importScripts('../workerTools.js')
 onmessage = (msg) => {
   const wasmBase = new URL('../wasm/', self.location.href).href
   self.Module = {
-    locateFile: (_path) => wasmBase + 'bc-core.wasm',
-    arguments: ['-l'],
+    locateFile: (_path) => wasmBase + 'dc-core.wasm',
   }
-  importScripts('../wasm/bc-core.js')
+  importScripts('../wasm/dc-core.js')
   emscriptenHack(new TtyClient(msg.data))
 }

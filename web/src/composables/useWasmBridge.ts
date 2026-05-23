@@ -7,6 +7,8 @@ export function useWasmBridge(name: CalcName): WasmBridge {
   return createEmscriptenBridge(name)
 }
 
+const PROMPTS: Partial<Record<CalcName, string>> = { bc: 'bc> ', dc: 'dc> ' }
+
 type SlaveInternal = {
   fromLdiscToUpperBuffer: number[]
   _onReadable: { fire(): void }
@@ -23,7 +25,16 @@ function feedLine(slave: ReturnType<typeof openpty>['slave'], line: string) {
   raw._onReadable.fire()
 }
 
-function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
+// apcalc prints this on startup when it can't find its key bindings file.
+// The message is written to stderr before emscriptenHack connects, so we
+// can't prevent it at the WASM level — filter it from the first output chunk.
+const APCALC_NOISE = /\S+: Cannot open bindings file "[^"]+", fancy editing disabled\.\r?\n/
+
+function createEmscriptenBridge(name: 'bc' | 'dc' | 'apcalc'): WasmBridge {
+  const PROMPT = PROMPTS[name]
+  const usePrompt = PROMPT !== undefined
+  const hasBanner = name === 'bc'
+
   let terminal: Terminal | null = null
   let currentSlave: ReturnType<typeof openpty>['slave'] | null = null
   let worker: Worker | null = null
@@ -33,6 +44,22 @@ function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
   const history: string[] = []
   let histIndex = 0
   let savedBuf = ''
+
+  // prompt state
+  let promptPending = false
+  let promptTimer: ReturnType<typeof setTimeout> | null = null
+
+  function writePrompt() {
+    if (promptTimer) { clearTimeout(promptTimer); promptTimer = null }
+    promptPending = false
+    terminal?.write(PROMPT!)
+  }
+
+  function schedulePrompt() {
+    // write prompt after bc output arrives; fall back to timeout for silent ops
+    promptPending = true
+    promptTimer = setTimeout(writePrompt, 60)
+  }
 
   function eraseInput() {
     if (terminal && inputBuf.length > 0) terminal.write('\b \b'.repeat(inputBuf.length))
@@ -54,6 +81,7 @@ function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
       savedBuf = ''
       inputBuf = ''
       feedLine(currentSlave, line)
+      if (usePrompt) schedulePrompt()
     } else if (data === '\x7f') {
       if (inputBuf.length > 0) {
         inputBuf = inputBuf.slice(0, -1)
@@ -81,10 +109,32 @@ function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
     inputBuf = ''
     histIndex = history.length
     savedBuf = ''
+    promptPending = false
+    if (promptTimer) { clearTimeout(promptTimer); promptTimer = null }
+
+    let startupFilterDone = name !== 'apcalc'
 
     disposables.push(
       master.onWrite(([data, ack]: [Uint8Array, () => void]) => {
+        // filter apcalc startup noise on first output chunk
+        if (!startupFilterDone) {
+          startupFilterDone = true
+          const text = new TextDecoder().decode(data)
+          const filtered = text.replace(APCALC_NOISE, '')
+          if (filtered !== text) {
+            if (filtered) terminal?.write(new TextEncoder().encode(filtered), ack)
+            else ack()
+            return
+          }
+        }
+
         terminal?.write(data, ack)
+
+        // after bc outputs (ends with newline), show prompt
+        if (usePrompt && promptPending) {
+          const text = new TextDecoder().decode(data)
+          if (text.endsWith('\n')) writePrompt()
+        }
       }),
       terminal!.onData(handleInput),
       terminal!.onResize(({ cols, rows }) => {
@@ -94,6 +144,25 @@ function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
 
     worker = new Worker(`${import.meta.env.BASE_URL}workers/${name}.worker.js`)
     new TtyServer(slave).start(worker)
+
+    if (usePrompt) {
+      if (hasBanner) {
+        // bc: show prompt after startup banner (ends with double newline)
+        let bannerDone = false
+        const bannerSub = master.onWrite(([data]: [Uint8Array, () => void]) => {
+          if (bannerDone) return
+          const text = new TextDecoder().decode(data)
+          if (text.includes('\n\n')) {
+            bannerDone = true
+            bannerSub.dispose()
+            terminal?.write(PROMPT!)
+          }
+        })
+      } else {
+        // dc and others: no banner, show prompt immediately after init
+        setTimeout(() => terminal?.write(PROMPT!), 80)
+      }
+    }
   }
 
   return {
@@ -112,9 +181,11 @@ function createEmscriptenBridge(name: 'bc' | 'apcalc'): WasmBridge {
       }
       inputBuf = ''
       feedLine(currentSlave, line)
+      if (usePrompt) schedulePrompt()
     },
 
     reset() {
+      if (promptTimer) { clearTimeout(promptTimer); promptTimer = null }
       disposables.forEach((d) => d.dispose())
       disposables = []
       worker?.terminate()

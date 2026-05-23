@@ -6,6 +6,6 @@ export interface WasmBridge {
   reset(): void
 }
 
-export type CalcName = 'calc' | 'bc' | 'apcalc'
+export type CalcName = 'calc' | 'bc' | 'dc' | 'apcalc'
 export type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 export type ActiveTab = 'compare' | CalcName

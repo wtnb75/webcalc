@@ -45,7 +45,12 @@ tasks:
       - npm install
 
   build:bc:
-    desc: build bc WASM via Emscripten (Docker)
+    desc: build bc and dc WASM via Emscripten (Docker)
+    generates:
+      - web/public/wasm/bc-core.js
+      - web/public/wasm/bc-core.wasm
+      - web/public/wasm/dc-core.js
+      - web/public/wasm/dc-core.wasm
     cmds:
       - mkdir -p web/public/wasm
       - |

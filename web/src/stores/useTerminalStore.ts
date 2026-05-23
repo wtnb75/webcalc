@@ -7,6 +7,7 @@ export const useTerminalStore = defineStore('terminal', () => {
   const loadState = ref<Record<CalcName, LoadState>>({
     calc: 'idle',
     bc: 'idle',
+    dc: 'idle',
     apcalc: 'idle',
   })
   const errorMessage = ref<Partial<Record<CalcName, string>>>({})
