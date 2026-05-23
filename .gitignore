@@ -5,6 +5,7 @@ web/public/wasm/
 web/dist/
 web/node_modules/
 web/.vite/
+web/package-lock.json
 
 # Rust build artifacts
 wasm/calc/target/

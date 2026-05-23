@@ -138,11 +138,16 @@ defineExpose({
           class="text-blue-600 hover:underline dark:text-blue-400"
         >{{ info.url }}</a>
       </div>
-      <p class="mt-1 text-gray-500 dark:text-gray-400">{{ info.description }}</p>
+      <p class="mt-1 text-gray-500 dark:text-gray-400">
+        {{ info.description }}
+      </p>
     </div>
 
     <div class="relative flex-1 overflow-hidden">
-      <div ref="containerRef" class="absolute inset-0" />
+      <div
+        ref="containerRef"
+        class="absolute inset-0"
+      />
 
       <div
         v-if="store.loadState[name] === 'loading'"
@@ -156,7 +161,10 @@ defineExpose({
         class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white dark:bg-black"
       >
         <span class="text-sm text-red-500 dark:text-red-400">❌ Failed to load {{ name }}.wasm</span>
-        <span v-if="store.errorMessage[name]" class="max-w-xs text-center text-xs text-gray-400 dark:text-gray-500">
+        <span
+          v-if="store.errorMessage[name]"
+          class="max-w-xs text-center text-xs text-gray-400 dark:text-gray-500"
+        >
           {{ store.errorMessage[name] }}
         </span>
         <button

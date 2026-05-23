@@ -14,6 +14,10 @@ defineExpose({ focus() { paneRef.value?.focus() } })
 
 <template>
   <div class="h-full">
-    <TerminalPane ref="paneRef" :name="name" :visible="visible" />
+    <TerminalPane
+      ref="paneRef"
+      :name="name"
+      :visible="visible"
+    />
   </div>
 </template>

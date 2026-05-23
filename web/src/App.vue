@@ -29,13 +29,36 @@ watch(tab, (t) => {
   <div class="flex h-screen flex-col bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
     <TabBar />
     <div class="min-h-0 flex-1">
-      <CompareView ref="compareRef" v-show="tab === 'compare'" :visible="tab === 'compare'" class="h-full" />
-      <SingleView ref="calcRef" v-show="tab === 'calc'" name="calc" :visible="tab === 'calc'" class="h-full" />
-      <SingleView ref="bcRef" v-show="tab === 'bc'" name="bc" :visible="tab === 'bc'" class="h-full" />
-      <SingleView ref="dcRef" v-show="tab === 'dc'" name="dc" :visible="tab === 'dc'" class="h-full" />
+      <CompareView
+        v-show="tab === 'compare'"
+        ref="compareRef"
+        :visible="tab === 'compare'"
+        class="h-full"
+      />
       <SingleView
-        ref="apcalcRef"
+        v-show="tab === 'calc'"
+        ref="calcRef"
+        name="calc"
+        :visible="tab === 'calc'"
+        class="h-full"
+      />
+      <SingleView
+        v-show="tab === 'bc'"
+        ref="bcRef"
+        name="bc"
+        :visible="tab === 'bc'"
+        class="h-full"
+      />
+      <SingleView
+        v-show="tab === 'dc'"
+        ref="dcRef"
+        name="dc"
+        :visible="tab === 'dc'"
+        class="h-full"
+      />
+      <SingleView
         v-show="tab === 'apcalc'"
+        ref="apcalcRef"
         name="apcalc"
         :visible="tab === 'apcalc'"
         class="h-full"
