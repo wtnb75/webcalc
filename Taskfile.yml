@@ -31,7 +31,7 @@ tasks:
         sh: "basename {{ .URL }}"
     cmds:
       - "[ -f {{ .FNAME }} ] || curl -sLO {{ .URL }}"
-      - "[ -d {{ .BASE }} ] || tar xfz {{ .FNAME }}"
+      - "[ -d {{ .BASE }} ] || tar xf {{ .FNAME }}"
 
   web:install:
     desc: install pnpm dependencies (required before WASM builds)
