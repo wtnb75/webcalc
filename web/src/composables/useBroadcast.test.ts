@@ -43,7 +43,7 @@ describe('useBroadcast', () => {
 
   it('skips bridges not yet registered (undefined)', () => {
     const a = makeBridge()
-    const bridges: ReturnType<typeof useBroadcast>['broadcast'] extends (t: string) => void
+    const _bridges: ReturnType<typeof useBroadcast>['broadcast'] extends (t: string) => void
       ? Record<string, WasmBridge | undefined>
       : never = { calc: a, bc: undefined as unknown as WasmBridge }
     const { broadcast } = useBroadcast({ calc: a })
