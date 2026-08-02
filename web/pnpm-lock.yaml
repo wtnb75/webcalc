@@ -21,59 +21,59 @@ importers:
         specifier: ^29.1.1
         version: 29.1.1
       pinia:
-        specifier: ^2.3.1
+        specifier: ^2.2.0
         version: 2.3.1(typescript@5.9.3)(vue@3.5.40(typescript@5.9.3))
       vue:
-        specifier: ^3.5.40
+        specifier: ^3.5.0
         version: 3.5.40(typescript@5.9.3)
       xterm:
         specifier: npm:@xterm/xterm@^5.5.0
         version: '@xterm/xterm@5.5.0'
       xterm-pty:
-        specifier: ^0.9.6
+        specifier: ^0.9.4
         version: 0.9.6
     devDependencies:
       '@vitejs/plugin-vue':
-        specifier: ^5.2.4
+        specifier: ^5.2.0
         version: 5.2.4(vite@6.4.3(jiti@1.21.7))(vue@3.5.40(typescript@5.9.3))
       '@vitest/coverage-v8':
-        specifier: ^3.2.7
+        specifier: ^3.2.0
         version: 3.2.7(vitest@3.2.7(jiti@1.21.7)(jsdom@29.1.1))
       '@vue/test-utils':
-        specifier: ^2.4.11
+        specifier: ^2.4.0
         version: 2.4.11(@vue/compiler-dom@3.5.40)(@vue/server-renderer@3.5.40)(vue@3.5.40(typescript@5.9.3))
       autoprefixer:
-        specifier: ^10.5.4
+        specifier: ^10.4.0
         version: 10.5.4(postcss@8.5.25)
       eslint:
-        specifier: ^9.39.5
+        specifier: ^9.0.0
         version: 9.39.5(jiti@1.21.7)
       eslint-plugin-vue:
-        specifier: ^9.33.0
+        specifier: ^9.30.0
         version: 9.33.0(eslint@9.39.5(jiti@1.21.7))
       postcss:
-        specifier: ^8.5.25
+        specifier: ^8.4.0
         version: 8.5.25
       prettier:
-        specifier: ^3.9.6
+        specifier: ^3.4.0
         version: 3.9.6
       prettier-plugin-tailwindcss:
-        specifier: ^0.6.14
+        specifier: ^0.6.0
         version: 0.6.14(prettier@3.9.6)
       tailwindcss:
-        specifier: ^3.4.19
+        specifier: ^3.4.0
         version: 3.4.19
       typescript:
-        specifier: ^5.9.3
+        specifier: ^5.6.0
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.65.0
+        specifier: ^8.0.0
         version: 8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
       vite:
-        specifier: ^6.4.3
+        specifier: ^6.0.0
         version: 6.4.3(jiti@1.21.7)
       vitest:
-        specifier: ^3.2.7
+        specifier: ^3.2.0
         version: 3.2.7(jiti@1.21.7)(jsdom@29.1.1)
 
 packages:
